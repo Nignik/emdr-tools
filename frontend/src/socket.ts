@@ -1,6 +1,14 @@
-// src/socket.ts
-import { io } from "socket.io-client";
+export const socket = new WebSocket("ws://localhost:4000");
+socket.binaryType = "arraybuffer";
 
-const socket = io("http://localhost:4000"); // backend socket.io
+socket.onopen = () => {
+    console.log("Połączono z serwerem WebSocket");
+};
 
-export default socket;
+socket.onerror = (err) => {
+    console.error("WebSocket error:", err);
+};
+
+socket.onclose = () => {
+    console.log("Połączenie zamknięte");
+};
