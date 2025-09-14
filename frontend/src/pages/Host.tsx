@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Params } from "../generated/params";
+import { WebSocketMessage, Params } from "../generated/params";
 import { socket } from "../socket";
 
 const Host: React.FC = () => {
@@ -13,9 +13,18 @@ const Host: React.FC = () => {
             return;
         }
         
-        const message = Params.create({ size, speed, color });
-        const buffer = Params.encode(message).finish();
+        const params: Params = {
+            size: size,
+            speed: speed,
+            color: color
+        }
+        const message: WebSocketMessage = {
+            params: params
+        }
+
+        const buffer = WebSocketMessage.encode(message).finish();
         socket.send(buffer);
+        console.log("Sending message")
     };
 
     return (

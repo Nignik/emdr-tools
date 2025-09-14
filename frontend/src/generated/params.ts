@@ -7,13 +7,164 @@
 /* eslint-disable */
 import { BinaryReader, BinaryWriter } from "@bufbuild/protobuf/wire";
 
-export const protobufPackage = "";
+export const protobufPackage = "emdr_messages";
+
+export interface WebSocketMessage {
+  /** Server to Client messages */
+  welcomeResponse?:
+    | WelcomeResponse
+    | undefined;
+  /** Shared */
+  params?: Params | undefined;
+}
+
+export interface WelcomeResponse {
+  userId: string;
+}
 
 export interface Params {
   size: number;
   speed: number;
   color: string;
 }
+
+function createBaseWebSocketMessage(): WebSocketMessage {
+  return { welcomeResponse: undefined, params: undefined };
+}
+
+export const WebSocketMessage: MessageFns<WebSocketMessage> = {
+  encode(message: WebSocketMessage, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.welcomeResponse !== undefined) {
+      WelcomeResponse.encode(message.welcomeResponse, writer.uint32(10).fork()).join();
+    }
+    if (message.params !== undefined) {
+      Params.encode(message.params, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): WebSocketMessage {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseWebSocketMessage();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.welcomeResponse = WelcomeResponse.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.params = Params.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): WebSocketMessage {
+    return {
+      welcomeResponse: isSet(object.welcomeResponse) ? WelcomeResponse.fromJSON(object.welcomeResponse) : undefined,
+      params: isSet(object.params) ? Params.fromJSON(object.params) : undefined,
+    };
+  },
+
+  toJSON(message: WebSocketMessage): unknown {
+    const obj: any = {};
+    if (message.welcomeResponse !== undefined) {
+      obj.welcomeResponse = WelcomeResponse.toJSON(message.welcomeResponse);
+    }
+    if (message.params !== undefined) {
+      obj.params = Params.toJSON(message.params);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<WebSocketMessage>, I>>(base?: I): WebSocketMessage {
+    return WebSocketMessage.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<WebSocketMessage>, I>>(object: I): WebSocketMessage {
+    const message = createBaseWebSocketMessage();
+    message.welcomeResponse = (object.welcomeResponse !== undefined && object.welcomeResponse !== null)
+      ? WelcomeResponse.fromPartial(object.welcomeResponse)
+      : undefined;
+    message.params = (object.params !== undefined && object.params !== null)
+      ? Params.fromPartial(object.params)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseWelcomeResponse(): WelcomeResponse {
+  return { userId: "" };
+}
+
+export const WelcomeResponse: MessageFns<WelcomeResponse> = {
+  encode(message: WelcomeResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.userId !== "") {
+      writer.uint32(10).string(message.userId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): WelcomeResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseWelcomeResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.userId = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): WelcomeResponse {
+    return { userId: isSet(object.userId) ? globalThis.String(object.userId) : "" };
+  },
+
+  toJSON(message: WelcomeResponse): unknown {
+    const obj: any = {};
+    if (message.userId !== "") {
+      obj.userId = message.userId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<WelcomeResponse>, I>>(base?: I): WelcomeResponse {
+    return WelcomeResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<WelcomeResponse>, I>>(object: I): WelcomeResponse {
+    const message = createBaseWelcomeResponse();
+    message.userId = object.userId ?? "";
+    return message;
+  },
+};
 
 function createBaseParams(): Params {
   return { size: 0, speed: 0, color: "" };

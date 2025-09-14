@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import MovingCircle from "../components/MovingCircle";
-import { Params } from "../generated/params";
+import { WebSocketMessage, Params } from "../generated/params";
 import { socket } from "../socket";
 
 const Client: React.FC = () => {
@@ -14,13 +14,15 @@ const Client: React.FC = () => {
         const handler = (event: MessageEvent) => {
             try {
                 const buffer = new Uint8Array(event.data);
-                const decoded: Params = Params.decode(buffer);
-
-                setParams({
-                    size: decoded.size,
-                    speed: decoded.speed,
-                    color: decoded.color
-                });
+                const decoded: WebSocketMessage = WebSocketMessage.decode(buffer);
+                const { params } = decoded;
+                if (params) {
+                    setParams({
+                        size: params.size,
+                        speed: params.speed,
+                        color: params.color,
+                    });
+                }
             } catch (err) {
                 console.error("Protobuf decode error:", err);
             }
