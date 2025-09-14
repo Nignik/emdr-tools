@@ -12,7 +12,7 @@ const Host: React.FC = () => {
             console.warn("WebSocket nie jest połączony");
             return;
         }
-
+        
         const message = Params.create({ size, speed, color });
         const buffer = Params.encode(message).finish();
         socket.send(buffer);

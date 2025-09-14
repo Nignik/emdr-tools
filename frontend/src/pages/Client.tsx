@@ -3,14 +3,8 @@ import MovingCircle from "../components/MovingCircle";
 import { Params } from "../generated/params";
 import { socket } from "../socket";
 
-interface ParamsType {
-    size: number;
-    speed: number;
-    color: string;
-}
-
 const Client: React.FC = () => {
-    const [params, setParams] = useState<ParamsType>({
+    const [params, setParams] = useState<Params>({
         size: 40,
         speed: 200,
         color: "#00ff00"
