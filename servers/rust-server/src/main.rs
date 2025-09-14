@@ -1,9 +1,9 @@
 mod connection_handler;
 
-use tokio::net::{TcpListener};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use connection_handler::ConnectionHandler;
+use std::sync::Arc;
+use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 
 pub mod comm {
   include!(concat!(env!("OUT_DIR"), "/emdr_messages.rs"));
@@ -11,7 +11,18 @@ pub mod comm {
 
 #[tokio::main]
 async fn main() {
-  let addr = "127.0.0.1:7878";
+  let args: Vec<String> = std::env::args().collect();
+  let (host, port) = match args.len() {
+    1 => ("127.0.0.1".to_string(), 4000),
+    2 => ("127.0.0.1".to_string(), args[1].parse().unwrap_or(4000)),
+    3 => (args[1].clone(), args[2].parse().unwrap_or(4000)),
+    _ => {
+      println!("Usage: {} [host] [port]", args[0]);
+      return;
+    }
+  };
+  
+  let addr = format!("{}:{}", host, port);
   let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
   println!("WebSocket server with Protobuf listening on: {}", addr);
 
