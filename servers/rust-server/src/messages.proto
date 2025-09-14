@@ -17,7 +17,6 @@ message WebSocketMessage {
 
 message JoinRequest {
   string username = 1;
-  optional string avatar_url = 2;
 }
 
 message WelcomeResponse {

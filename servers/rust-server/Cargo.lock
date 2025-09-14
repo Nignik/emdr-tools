@@ -575,6 +575,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caf4aa5b0f434c91fe5c7f1ecb6a5ece2130b02ad2a590589dda5146df959001"
 
 [[package]]
+name = "rust-server"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -598,18 +610,6 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "server"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "prost",
- "prost-build",
- "prost-types",
- "tokio",
- "tokio-tungstenite",
-]
 
 [[package]]
 name = "sha1"
