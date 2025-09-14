@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import MovingCircle from "../components/MovingCircle";
-import socket from "../socket";
-import { Params } from "../generated/params"; // import wygenerowanego pliku TS
+import { Params } from "../generated/params";
+import { socket } from "../socket";
 
 interface ParamsType {
     size: number;
@@ -17,12 +17,9 @@ const Client: React.FC = () => {
     });
 
     useEffect(() => {
-        const handler = (data: Uint8Array | ArrayBuffer) => {
+        const handler = (event: MessageEvent) => {
             try {
-                // jeśli to ArrayBuffer, zamieniamy na Uint8Array
-                const buffer = data instanceof Uint8Array ? data : new Uint8Array(data);
-
-                // deserializacja z wygenerowanej klasy
+                const buffer = new Uint8Array(event.data);
                 const decoded: Params = Params.decode(buffer);
 
                 setParams({
@@ -35,10 +32,10 @@ const Client: React.FC = () => {
             }
         };
 
-        socket.on("updateParams", handler);
+        socket.addEventListener("message", handler);
 
         return () => {
-            socket.off("updateParams", handler);
+            socket.removeEventListener("message", handler);
         };
     }, []);
 

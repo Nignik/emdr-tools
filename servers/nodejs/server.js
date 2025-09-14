@@ -1,26 +1,43 @@
-const { Server } = require("socket.io");
+const WebSocket = require("ws");
 const protobuf = require("protobufjs");
 
-const io = new Server(4000, {
-    cors: { origin: "*" }
-});
+// Utwórz serwer WebSocket
+const wss = new WebSocket.Server({ port: 4000 });
 
+// Załaduj definicję Protobuf
 protobuf.load("params.proto", (err, root) => {
     if (err) throw err;
 
     const Params = root.lookupType("Params");
 
-    io.on("connection", (socket) => {
+    wss.on("connection", (ws) => {
         console.log("Client connected");
 
-        socket.on("updateParams", (data) => {
-            // data przychodzi jako Uint8Array (binarnie)
-            const params = Params.decode(data); // deserializacja Protobuf
-            console.log("New params:", params);
+        ws.on("message", (message) => {
+            try {
+                // `message` to Buffer (Node.js) lub ArrayBuffer (browser)
+                const buffer = Buffer.from(message);
 
-            // Wyślij z powrotem do wszystkich klientów (serializacja)
-            const buffer = Params.encode(params).finish();
-            io.emit("updateParams", buffer);
+                // Dekodowanie z protobuf
+                const params = Params.decode(buffer);
+                console.log("New params:", params);
+
+                // Serializacja do protobuf
+                const responseBuffer = Params.encode(params).finish();
+
+                // Rozgłoś do wszystkich podłączonych klientów
+                wss.clients.forEach((client) => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(responseBuffer);
+                    }
+                });
+            } catch (e) {
+                console.error("Decode error:", e);
+            }
+        });
+
+        ws.on("close", () => {
+            console.log("Client disconnected");
         });
     });
 });
