@@ -32,7 +32,7 @@ impl ConnectionHandler {
     self.current_conn_id += 1;
 
     let user_id = format!("user_{}", conn_id);
-    let welcome = WebSocketMessage { message: Some(ProtoMessage::WelcomeResponse(comm::WelcomeResponse { user_id: user_id.clone(), server_info: Some(comm::ServerInfo { version: "1.0.0".to_string() }) })) };
+    let welcome = WebSocketMessage { message: Some(ProtoMessage::WelcomeResponse(comm::WelcomeResponse { user_id: user_id.clone() })) };
     self.send_message(conn_id.clone(), welcome).await;
 
     self.current_conn_id += 1;

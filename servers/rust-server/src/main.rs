@@ -5,7 +5,6 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use connection_handler::ConnectionHandler;
 
-
 pub mod comm {
   include!(concat!(env!("OUT_DIR"), "/emdr_messages.rs"));
 }
