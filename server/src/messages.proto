@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package emdr_messages;
+
+message WebSocketMessage {
+  oneof message {
+    // Client to Server messages
+    JoinRequest join_request = 1;
+    
+    // Server to Client messages
+    WelcomeResponse welcome_response = 2;
+    UserJoined user_joined = 3;
+    UserLeft user_left = 4;
+    ErrorMessage error_message = 5;
+  }
+}
+
+message JoinRequest {
+  string username = 1;
+  optional string avatar_url = 2;
+}
+
+message WelcomeResponse {
+  string user_id = 1;
+  ServerInfo server_info = 2;
+}
+
+message UserJoined {
+  User user = 1;
+}
+
+message UserLeft {
+  string user_id = 1;
+  string username = 2;
+}
+
+message ErrorMessage {
+  string code = 1;
+  string message = 2;
+}
+
+message User {
+  string id = 1;
+  string username = 2;
+}
+
+message ServerInfo {
+  string version = 1;
+}
