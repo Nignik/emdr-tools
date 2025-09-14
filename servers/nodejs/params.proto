@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+message Params {
+  int32 size = 1;
+  int32 speed = 2;
+  string color = 3;
+}
