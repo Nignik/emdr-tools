@@ -1,9 +1,8 @@
 mod connection_handler;
 
-use connection_handler::ConnectionHandler;
 use std::sync::Arc;
+use connection_handler::ConnectionHandler;
 use tokio::net::TcpListener;
-use tokio::sync::Mutex;
 
 pub mod comm {
   include!(concat!(env!("OUT_DIR"), "/emdr_messages.rs"));
@@ -21,26 +20,25 @@ async fn main() {
       return;
     }
   };
-  
+
   let addr = format!("{}:{}", host, port);
   let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
   println!("WebSocket server with Protobuf listening on: {}", addr);
 
-  let conn_handler = Arc::new(Mutex::new(ConnectionHandler::default()));
-  while let Ok((stream, addr)) = listener.accept().await {
-    let handler = conn_handler.clone(); // Clone the Arc, not the handler
+  let conn_handler = Arc::new(ConnectionHandler::default());
 
-    let conn_id = match handler.lock().await.accept_connection(stream).await {
-      Ok(id) => id,
-      Err(e) => {
-        println!("Failed with {} to accept connection with: {}", e, addr);
-        continue;
-      }
-    };
-
+  while let Ok((stream, _)) = listener.accept().await {
     let handler = conn_handler.clone();
+
     tokio::spawn(async move {
-      handler.lock().await.handle_connection(conn_id).await;
+      let conn_id = match handler.accept_connection(stream).await {
+        Ok(id) => id,
+        Err(e) => {
+          println!("Failed with {} to accept connection with", e);
+          return;
+        }
+      };
+      handler.handle_connection(conn_id).await;
     });
   }
 }
