@@ -1,38 +1,60 @@
 const WebSocket = require("ws");
 const protobuf = require("protobufjs");
 
-// Utwórz serwer WebSocket
 const wss = new WebSocket.Server({ port: 4000 });
 
-// Załaduj definicję Protobuf
 protobuf.load("params.proto", (err, root) => {
-    if (err) throw err;
+    if (err) {
+        console.error("Proto load error:", err);
+        process.exit(1);
+    }
 
-    const Params = root.lookupType("Params");
+    // Typy w pełni kwalifikowane (z nazwą paczki!)
+    const WebSocketMessage = root.lookupType("emdr_messages.WebSocketMessage");
+    const WelcomeResponse  = root.lookupType("emdr_messages.WelcomeResponse");
+    const Params           = root.lookupType("emdr_messages.Params");
 
     wss.on("connection", (ws) => {
         console.log("Client connected");
 
         ws.on("message", (message) => {
             try {
-                // `message` to Buffer (Node.js) lub ArrayBuffer (browser)
-                const buffer = Buffer.from(message);
+                const buffer = Buffer.isBuffer(message) ? message : Buffer.from(message);
 
-                // Dekodowanie z protobuf
-                const params = Params.decode(buffer);
-                console.log("New params:", params);
+                const incoming = WebSocketMessage.decode(buffer);
 
-                // Serializacja do protobuf
-                const responseBuffer = Params.encode(params).finish();
+                const verifyErr = WebSocketMessage.verify(incoming);
+                if (verifyErr) throw new Error(verifyErr);
 
-                // Rozgłoś do wszystkich podłączonych klientów
-                wss.clients.forEach((client) => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(responseBuffer);
-                    }
-                });
+                if (incoming.welcome_response) {
+                    const wr = incoming.welcome_response; // { user_id: "..." }
+                    console.log("[IN] WelcomeResponse:", wr);
+
+                    const respMsg = WebSocketMessage.create({
+                        welcome_response: WelcomeResponse.create({ user_id: wr.user_id }),
+                    });
+                    const respBuf = WebSocketMessage.encode(respMsg).finish();
+
+                    broadcast(respBuf);
+                } else if (incoming.params) {
+                    const p = incoming.params; // { size, speed, color }
+                    console.log("[IN] Params:", p);
+
+                    const respMsg = WebSocketMessage.create({
+                        params: Params.create({
+                            size: p.size ?? 0,
+                            speed: p.speed ?? 0,
+                            color: p.color ?? "",
+                        }),
+                    });
+                    const respBuf = WebSocketMessage.encode(respMsg).finish();
+
+                    broadcast(respBuf);
+                } else {
+                    console.warn("[WARN] WebSocketMessage bez ustawionego pola oneof");
+                }
             } catch (e) {
-                console.error("Decode error:", e);
+                console.error("Decode/handle error:", e);
             }
         });
 
@@ -40,4 +62,12 @@ protobuf.load("params.proto", (err, root) => {
             console.log("Client disconnected");
         });
     });
+
+    function broadcast(buffer) {
+        wss.clients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(buffer);
+            }
+        });
+    }
 });
