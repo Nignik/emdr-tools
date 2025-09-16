@@ -1,3 +1,3 @@
 fn main() {
-  prost_build::compile_protos(&["../../shared/params.proto"], &["../../"]).unwrap();
+  prost_build::compile_protos(&["../../shared/messages.proto"], &["../../"]).unwrap();
 }
