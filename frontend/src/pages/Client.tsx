@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import MovingCircle from "../components/MovingCircle";
-import { WebSocketMessage, Params } from "../generated/params";
+import { WebSocketMessage, Params } from "../generated/messages";
 import { socket } from "../socket";
 
 const Client: React.FC = () => {

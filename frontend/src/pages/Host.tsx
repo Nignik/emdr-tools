@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { WebSocketMessage, Params } from "../generated/params";
+import { WebSocketMessage, Params } from "../generated/messages";
 import { socket } from "../socket";
 import MovingCircle from "../components/MovingCircle";
 import "./Host.css";
