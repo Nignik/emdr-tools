@@ -1,10 +1,11 @@
+// server/index.js
 const WebSocket = require("ws");
 const protobuf = require("protobufjs");
 const crypto = require("crypto");
 
 const wss = new WebSocket.Server({ port: 4000 });
 
-// Prosty magazyn sesji: id -> Set(ws)
+// Map: sessionId -> Set<ws>
 const sessions = new Map();
 
 protobuf.load("../../shared/messages.proto", (err, root) => {
@@ -13,55 +14,12 @@ protobuf.load("../../shared/messages.proto", (err, root) => {
         process.exit(1);
     }
 
-    // Typy protobuf (z pakietem)
     const WebSocketMessage      = root.lookupType("emdr_messages.WebSocketMessage");
     const CreateSessionResponse = root.lookupType("emdr_messages.CreateSessionResponse");
     const JoinSessionResponse   = root.lookupType("emdr_messages.JoinSessionResponse");
     const Params                = root.lookupType("emdr_messages.Params");
 
-    // === Handlery ===
-    function handleCreateSessionRequest(ws) {
-        console.log("[IN] CreateSessionRequest");
-        const sessionId = crypto.randomUUID?.() || crypto.randomBytes(8).toString("hex");
-        const sessionUrl = `wss://example.com/session/${sessionId}`;
-        sessions.set(sessionId, new Set([ws]));
-
-        send(ws, createMsg({
-            create_session_response: CreateSessionResponse.create({
-                accepted: true,
-                session_url: sessionUrl,
-            })
-        }));
-    }
-
-    function handleJoinSessionRequest(ws, joinReq) {
-        const { session_url } = joinReq;
-        console.log("[IN] JoinSessionRequest:", session_url);
-
-        const parts = String(session_url || "").split("/");
-        const sessionId = parts[parts.length - 1];
-        const exists = sessions.has(sessionId);
-
-        if (exists) sessions.get(sessionId).add(ws);
-
-        send(ws, createMsg({
-            join_session_response: JoinSessionResponse.create({ accepted: !!exists })
-        }));
-    }
-
-    function handleParams(p) {
-        console.log("[IN] Params:", p);
-        const resp = createMsg({
-            params: Params.create({
-                size: p.size ?? 0,
-                speed: p.speed ?? 0,
-                color: p.color ?? "",
-            }),
-        });
-        broadcast(resp);
-    }
-
-    // === Helpery transportowe ===
+    // ===== Helpers =====
     function createMsg(fields) {
         return WebSocketMessage.encode(WebSocketMessage.create(fields)).finish();
     }
@@ -84,22 +42,72 @@ protobuf.load("../../shared/messages.proto", (err, root) => {
 
     function decodeAndVerify(buffer) {
         const msg = WebSocketMessage.decode(buffer);
-        const err = WebSocketMessage.verify(WebSocketMessage.toObject(msg));
+        const plain = WebSocketMessage.toObject(msg); // verify oczekuje plain object
+        const err = WebSocketMessage.verify(plain);
         if (err) throw new Error(err);
         return msg;
     }
 
+    // Zwraca nazwę ustawionego wariantu oneof (camelCase), np. "createSessionRequest"
     function getOneofCase(msg) {
-        // Zwróć nazwę ustawionego pola oneof (albo null)
-        if (msg.create_session_request) return "create_session_request";
-        if (msg.join_session_request)   return "join_session_request";
-        if (msg.create_session_response) return "create_session_response"; // (gdyby klient odesłał)
-        if (msg.join_session_response)   return "join_session_response";
-        if (msg.params)                  return "params";
-        return null;
+        const withOneof = WebSocketMessage.toObject(msg, { oneofs: true });
+        return withOneof.message || null;
     }
 
-    // === Główne zdarzenia WS ===
+    // ===== Handlery =====
+    function handleCreateSessionRequest(ws) {
+        console.log("[IN] CreateSessionRequest");
+
+        const sessionId = crypto.randomUUID?.() || crypto.randomBytes(8).toString("hex");
+        const sessionUrl = `http://localhost:5173/client?sid=${sessionId}`;
+
+        sessions.set(sessionId, new Set([ws]));
+
+        const respBuf = createMsg({
+            createSessionResponse: CreateSessionResponse.create({
+                accepted: true,
+                sessionUrl, // camelCase nazwy pól w ts-proto/Twoim hoście
+            }),
+        });
+        send(ws, respBuf);
+    }
+
+    function handleJoinSessionRequest(ws, joinReq) {
+        const sessionUrl = joinReq?.sessionUrl ?? joinReq?.session_url ?? "";
+        console.log("[IN] JoinSessionRequest:", sessionUrl);
+
+        // Wyciągnij sid z query stringu
+        let sessionId = "";
+        try {
+            const u = new URL(String(sessionUrl));
+            sessionId = u.searchParams.get("sid") || "";
+        } catch {
+            const parts = String(sessionUrl || "").split("sid=");
+            sessionId = parts[1] ? parts[1].split("&")[0] : "";
+        }
+
+        const exists = sessionId && sessions.has(sessionId);
+        if (exists) sessions.get(sessionId).add(ws);
+
+        const respBuf = createMsg({
+            joinSessionResponse: JoinSessionResponse.create({ accepted: !!exists }),
+        });
+        send(ws, respBuf);
+    }
+
+    function handleParams(p) {
+        console.log("[IN] Params:", p);
+        const respBuf = createMsg({
+            params: Params.create({
+                size: p.size ?? 0,
+                speed: p.speed ?? 0,
+                color: p.color ?? "",
+            }),
+        });
+        broadcast(respBuf);
+    }
+
+    // ===== Serwer WS =====
     wss.on("connection", (ws) => {
         console.log("Client connected");
 
@@ -108,18 +116,27 @@ protobuf.load("../../shared/messages.proto", (err, root) => {
                 const buffer = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
                 const incoming = decodeAndVerify(buffer);
 
-                switch (getOneofCase(incoming)) {
-                    case "create_session_request":
+                const oneofCase = getOneofCase(incoming);
+                // Podgląd co przyszło (plain object + discriminator)
+                const dump = WebSocketMessage.toObject(incoming, { oneofs: true });
+                console.log("[IN] WebSocketMessage", JSON.stringify(dump, null, 2));
+                console.log("[IN] oneof =", oneofCase);
+
+                switch (oneofCase) {
+                    case "createSessionRequest":
                         handleCreateSessionRequest(ws);
                         break;
-                    case "join_session_request":
-                        handleJoinSessionRequest(ws, incoming.join_session_request);
+
+                    case "joinSessionRequest":
+                        handleJoinSessionRequest(ws, incoming.joinSessionRequest);
                         break;
+
                     case "params":
                         handleParams(incoming.params);
                         break;
+
                     default:
-                        console.warn("[WARN] Nieobsługiwane/nieustawione pole oneof");
+                        console.warn("[WARN] Nieobsługiwane/nieustawione pole oneof:", oneofCase);
                 }
             } catch (e) {
                 console.error("Decode/handle error:", e);
