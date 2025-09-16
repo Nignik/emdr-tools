@@ -39,8 +39,6 @@ impl ConnectionHandler {
     *self.current_conn_id.lock().await += 1;
 
     let user_id = format!("user_{}", conn_id);
-    let welcome = WebSocketMessage { message: Some(ProtoMessage::WelcomeResponse(comm::WelcomeResponse { user_id: user_id.clone() })) };
-    self.send_message(conn_id.clone(), welcome).await;
 
     println!("WebSocket connected, user: {}", user_id);
     Ok(conn_id)

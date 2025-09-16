@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package emdr_messages;
+
+message WebSocketMessage {
+  oneof message {
+    // Client to Server messages
+    CreateSessionRequest create_session_request = 1;
+    JoinSessionRequest join_session_request = 2;
+    
+    // Server to Client messages
+    CreateSessionResponse create_session_response = 3;
+    JoinSessionResponse join_session_response = 4;
+
+    // Shared
+    Params params = 5;
+  }
+}
+
+message CreateSessionRequest {
+      
+}
+
+message JoinSessionRequest {
+  string session_url = 1;
+}
+
+message CreateSessionResponse {
+  bool accepted = 1;
+  string session_url = 2;
+}
+
+message JoinSessionResponse {
+  bool accepted = 1;
+}
+
+message Params {
+  int32 size = 1;
+  int32 speed = 2;
+  string color = 3;
+}
