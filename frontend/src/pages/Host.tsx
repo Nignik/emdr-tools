@@ -9,6 +9,7 @@ const Host: React.FC = () => {
     const [speed, setSpeed] = useState(200);
     const [color, setColor] = useState("#00ff00");
     const [isUpdated, setIsUpdated] = useState(false);
+    const [resetToken, setResetToken] = useState(0);
 
     const [sessionUrl, setSessionUrl] = useState<string | null>(null);
 
@@ -61,6 +62,7 @@ const Host: React.FC = () => {
         console.log("[Host] Sent Params:", { size, speed, color });
         setIsUpdated(true);
         setTimeout(() => setIsUpdated(false), 1500);
+        setResetToken((t) => t + 1);   // 🔁 zainicjuj restart ruchu
     };
 
     const createSession = () => {
@@ -82,7 +84,7 @@ const Host: React.FC = () => {
     return (
         <div className="host-root">
             <section className="preview-surface">
-                <MovingCircle size={size} speed={speed} color={color} boundToParent />
+                <MovingCircle size={size} speed={speed} color={color} boundToParent resetToken={resetToken}/>
             </section>
 
             <section className="controls-surface">
