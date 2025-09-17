@@ -28,7 +28,7 @@ export interface CreateSessionRequest {
 }
 
 export interface JoinSessionRequest {
-  sessionUrl: string;
+  sid: string;
 }
 
 export interface CreateSessionResponse {
@@ -44,6 +44,7 @@ export interface Params {
   size: number;
   speed: number;
   color: string;
+  sid: string;
 }
 
 function createBaseWebSocketMessage(): WebSocketMessage {
@@ -239,13 +240,13 @@ export const CreateSessionRequest: MessageFns<CreateSessionRequest> = {
 };
 
 function createBaseJoinSessionRequest(): JoinSessionRequest {
-  return { sessionUrl: "" };
+  return { sid: "" };
 }
 
 export const JoinSessionRequest: MessageFns<JoinSessionRequest> = {
   encode(message: JoinSessionRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.sessionUrl !== "") {
-      writer.uint32(10).string(message.sessionUrl);
+    if (message.sid !== "") {
+      writer.uint32(10).string(message.sid);
     }
     return writer;
   },
@@ -262,7 +263,7 @@ export const JoinSessionRequest: MessageFns<JoinSessionRequest> = {
             break;
           }
 
-          message.sessionUrl = reader.string();
+          message.sid = reader.string();
           continue;
         }
       }
@@ -275,13 +276,13 @@ export const JoinSessionRequest: MessageFns<JoinSessionRequest> = {
   },
 
   fromJSON(object: any): JoinSessionRequest {
-    return { sessionUrl: isSet(object.sessionUrl) ? globalThis.String(object.sessionUrl) : "" };
+    return { sid: isSet(object.sid) ? globalThis.String(object.sid) : "" };
   },
 
   toJSON(message: JoinSessionRequest): unknown {
     const obj: any = {};
-    if (message.sessionUrl !== "") {
-      obj.sessionUrl = message.sessionUrl;
+    if (message.sid !== "") {
+      obj.sid = message.sid;
     }
     return obj;
   },
@@ -291,7 +292,7 @@ export const JoinSessionRequest: MessageFns<JoinSessionRequest> = {
   },
   fromPartial<I extends Exact<DeepPartial<JoinSessionRequest>, I>>(object: I): JoinSessionRequest {
     const message = createBaseJoinSessionRequest();
-    message.sessionUrl = object.sessionUrl ?? "";
+    message.sid = object.sid ?? "";
     return message;
   },
 };
@@ -431,7 +432,7 @@ export const JoinSessionResponse: MessageFns<JoinSessionResponse> = {
 };
 
 function createBaseParams(): Params {
-  return { size: 0, speed: 0, color: "" };
+  return { size: 0, speed: 0, color: "", sid: "" };
 }
 
 export const Params: MessageFns<Params> = {
@@ -444,6 +445,9 @@ export const Params: MessageFns<Params> = {
     }
     if (message.color !== "") {
       writer.uint32(26).string(message.color);
+    }
+    if (message.sid !== "") {
+      writer.uint32(34).string(message.sid);
     }
     return writer;
   },
@@ -479,6 +483,14 @@ export const Params: MessageFns<Params> = {
           message.color = reader.string();
           continue;
         }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.sid = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -493,6 +505,7 @@ export const Params: MessageFns<Params> = {
       size: isSet(object.size) ? globalThis.Number(object.size) : 0,
       speed: isSet(object.speed) ? globalThis.Number(object.speed) : 0,
       color: isSet(object.color) ? globalThis.String(object.color) : "",
+      sid: isSet(object.sid) ? globalThis.String(object.sid) : "",
     };
   },
 
@@ -507,6 +520,9 @@ export const Params: MessageFns<Params> = {
     if (message.color !== "") {
       obj.color = message.color;
     }
+    if (message.sid !== "") {
+      obj.sid = message.sid;
+    }
     return obj;
   },
 
@@ -518,6 +534,7 @@ export const Params: MessageFns<Params> = {
     message.size = object.size ?? 0;
     message.speed = object.speed ?? 0;
     message.color = object.color ?? "";
+    message.sid = object.sid ?? "";
     return message;
   },
 };

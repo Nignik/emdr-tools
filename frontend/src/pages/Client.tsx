@@ -8,6 +8,7 @@ const Client: React.FC = () => {
         size: 40,
         speed: 200,
         color: "#00ff00",
+        sid: ""
     });
     const [sid, setSid] = useState<string | null>(null);
     const [resetToken, setResetToken] = useState(0);
@@ -49,6 +50,7 @@ const Client: React.FC = () => {
                         size: p.size,
                         speed: p.speed,
                         color: p.color,
+                        sid: p.sid
                     });
                     setResetToken((t) => t + 1); // 🔁 restart po nowych parametrach
                 }
@@ -57,9 +59,9 @@ const Client: React.FC = () => {
             }
         };
 
-        socket.addEventListener("message", onMessage as any);
+        socket.addEventListener("message", onMessage);
         return () => {
-            socket.removeEventListener("message", onMessage as any);
+            socket.removeEventListener("message", onMessage);
         };
     }, []);
 
@@ -77,7 +79,7 @@ const Client: React.FC = () => {
                     joinSessionRequest: {
                         // .proto ma `string session_url = 1;`
                         // w ts-proto to jest `sessionUrl` — wyślemy pełny link (z sid)
-                        sessionUrl: href,
+                        sid: params.sid,
                     },
                 });
                 const buf = WebSocketMessage.encode(msg).finish();
