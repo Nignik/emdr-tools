@@ -22,7 +22,7 @@ message CreateSessionRequest {
 }
 
 message JoinSessionRequest {
-  string session_url = 1;
+  string sid = 1;
 }
 
 message CreateSessionResponse {
@@ -38,4 +38,5 @@ message Params {
   int32 size = 1;
   int32 speed = 2;
   string color = 3;
+  string sid = 4;
 }
