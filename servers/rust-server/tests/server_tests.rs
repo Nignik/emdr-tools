@@ -2,10 +2,6 @@ mod common;
 
 use anyhow::{Result};
 
-pub mod comm {
-  include!(concat!(env!("OUT_DIR"), "/emdr_messages.rs"));
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -32,6 +28,27 @@ mod tests {
     let sid = common::create_session(&mut host).await?.session_url;
     let resp = common::join_session(&mut client, sid).await?;
     assert!(resp.accepted);
+
+    client.close(None).await.ok();
+    host.close(None).await.ok();
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn server_passess_parameters_session() -> Result<()> {
+    let url = common::spawn().await?;
+    let mut host = common::connect(&url).await?;
+    let mut client = common::connect(&url).await?;
+
+    let sid = common::create_session(&mut host).await?.session_url;
+    let _ = common::join_session(&mut client, sid).await?;
+
+    let params = common::comm::Params{size: 1, speed: 2, color: String::from("blue"), sid: String::from("0")};
+    let params_response = common::send_params(&mut host, &mut client, params).await?;
+    assert_eq!(params_response.size, 1);
+    assert_eq!(params_response.speed, 2);
+    assert_eq!(params_response.color, "blue");
+    assert_eq!(params_response.sid, "0");
 
     client.close(None).await.ok();
     host.close(None).await.ok();
