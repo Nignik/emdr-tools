@@ -24,17 +24,6 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y protobuf-compiler
       
-    - name: Cache cargo registry
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          servers/rust-server
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-
-    
     - name: Run tests
       run: cargo test --verbose
       working-directory: ./servers/rust-server
