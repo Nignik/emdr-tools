@@ -73,18 +73,11 @@ protobuf.load("../../shared/messages.proto", (err, root) => {
     }
 
     function handleJoinSessionRequest(ws, joinReq) {
-        const sessionUrl = joinReq?.sessionUrl ?? joinReq?.session_url ?? "";
-        console.log("[IN] JoinSessionRequest:", sessionUrl);
+        const sid = joinReq?.sid ?? joinReq?.sid ?? "";
+        console.log("[IN] JoinSessionRequest:", sid);
 
         // Wyciągnij sid z query stringu
-        let sessionId = "";
-        try {
-            const u = new URL(String(sessionUrl));
-            sessionId = u.searchParams.get("sid") || "";
-        } catch {
-            const parts = String(sessionUrl || "").split("sid=");
-            sessionId = parts[1] ? parts[1].split("&")[0] : "";
-        }
+        let sessionId = sid;
 
         const exists = sessionId && sessions.has(sessionId);
         if (exists) sessions.get(sessionId).add(ws);

@@ -79,12 +79,13 @@ const Client: React.FC = () => {
                     joinSessionRequest: {
                         // .proto ma `string session_url = 1;`
                         // w ts-proto to jest `sessionUrl` — wyślemy pełny link (z sid)
-                        sid: params.sid,
+                        sid: sid,
                     },
                 });
+                console.log(msg);
                 const buf = WebSocketMessage.encode(msg).finish();
                 socket.send(buf);
-                console.log("[Client] Sent JoinSessionRequest with sessionUrl:", href);
+                console.log("[Client] Sent JoinSessionRequest with sid:", sid);
             } catch (e) {
                 console.error("[Client] Send JoinSessionRequest error:", e);
             }
