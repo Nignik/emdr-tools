@@ -1,97 +1,59 @@
-use rust_server::ConnectionHandler;
+mod common;
 
-use futures_util::{SinkExt, StreamExt};
-use prost::Message;
-use std::sync::Arc;
-use tokio_tungstenite::{tungstenite::Message as TokioMessage};
-
-pub mod comm {
-  include!(concat!(env!("OUT_DIR"), "/emdr_messages.rs"));
-}
-use comm::{WebSocketMessage, web_socket_message::Message as ProtoMessage};
+use anyhow::{Result};
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use tokio::net::TcpListener;
-  use tokio_tungstenite::connect_async;
 
-  async fn spawn_test_server() -> String {
-    let host = "127.0.0.1";
-    let listener = TcpListener::bind((host, 0)).await.expect("Failed to bind");
-    let addr = listener.local_addr().expect("Failed to get local address");
+  #[tokio::test]
+  async fn server_creates_session() -> Result<()> {
+    let url = common::spawn().await?;
+    let mut host = common::connect(&url).await?;
 
-    println!("WebSocket server with Protobuf listening on: {}", addr);
+    let resp = common::create_session(&mut host).await?;
+    assert!(resp.accepted);
+    assert_eq!(resp.session_url, "http://localhost:5173/client?sid=0");
 
-    let conn_handler = Arc::new(ConnectionHandler::default());
-    tokio::spawn(async move {
-      while let Ok((stream, _)) = listener.accept().await {
-        let handler = conn_handler.clone();
-
-        tokio::spawn(async move {
-          let conn_id = match handler.accept_connection(stream).await {
-            Ok(id) => id,
-            Err(e) => {
-              println!("Failed with {} to accept connection with", e);
-              return;
-            }
-          };
-          handler.handle_connection(conn_id).await;
-        });
-      }
-    });
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-    addr.to_string()
+    host.close(None).await.ok();
+    Ok(())
   }
 
   #[tokio::test]
-  async fn server_accepts_connections() {
-    let addr = spawn_test_server().await;
+  async fn server_lets_join_session() -> Result<()> {
+    let url = common::spawn().await?;
+    let mut host = common::connect(&url).await?;
+    let mut client = common::connect(&url).await?;
 
-    let url = format!("ws://{}", addr);
-    let (_, _) = connect_async(&url).await.expect("Failed to connect");
-    let (_, _) = connect_async(&url).await.expect("Failed to connect");
-    let (_, _) = connect_async(&url).await.expect("Failed to connect");
-    let (_, _) = connect_async(&url).await.expect("Failed to connect");
+    let session_url = common::create_session(&mut host).await?.session_url;
+    let (_, sid) = session_url.split_once("?sid=").unwrap();
+    let resp = common::join_session(&mut client, sid.to_string()).await?;
+    assert!(resp.accepted);
+
+    client.close(None).await.ok();
+    host.close(None).await.ok();
+    Ok(())
   }
 
   #[tokio::test]
-  async fn server_handles_message_params() {
-    let addr = spawn_test_server().await;
+  async fn server_passess_parameters_session() -> Result<()> {
+    let url = common::spawn().await?;
+    let mut host = common::connect(&url).await?;
+    let mut client = common::connect(&url).await?;
 
-    let url = format!("ws://{}", addr);
-    let (mut rx, _) = connect_async(&url).await.expect("Failed to connect");
-    let (mut tx, _) = connect_async(&url).await.expect("Failed to connect");
+    let session_url = common::create_session(&mut host).await?.session_url;
+    let (_, sid) = session_url.split_once("?sid=").unwrap();
+    let _ = common::join_session(&mut client, sid.to_string()).await?;
 
-    let handle = tokio::spawn(async move {
-      while let Some(msg) = rx.next().await {
-        println!("TEST: Received message");
-        let bytes = msg.expect("Failed to read message").into_data();
-        let decoded_msg = WebSocketMessage::decode(&bytes[..]).expect("Failed to decode message");
-        match decoded_msg.message {
-          Some(ProtoMessage::Params(params)) => {
-            assert_eq!(params.size, 10);
-            assert_eq!(params.speed, 10);
-            assert_eq!(params.color, "blue");
-            rx.close(None).await.ok();
-            return;
-          }
-          _ => {}
-        }
-      }
-    });
+    let params = common::comm::Params{size: 1, speed: 2, color: String::from("blue"), sid: sid.to_string()};
+    let params_response = common::send_params(&mut host, &mut client, params).await?;
+    assert_eq!(params_response.size, 1);
+    assert_eq!(params_response.speed, 2);
+    assert_eq!(params_response.color, "blue");
+    assert_eq!(params_response.sid, sid);
 
-    let msg = WebSocketMessage { message: Some(ProtoMessage::Params(comm::Params { size: 10, speed: 10, color: String::from("blue") })) };
-
-    let mut buf = Vec::new();
-    if msg.encode(&mut buf).is_ok() {
-      let _ = tx.send(TokioMessage::Binary(buf.into())).await.unwrap();
-    }
-
-    tokio::time::timeout(tokio::time::Duration::from_secs(1), handle).await.expect("Test timed out").expect("Receiver task failed");
-
-    tx.close(None).await.ok();
+    client.close(None).await.ok();
+    host.close(None).await.ok();
+    Ok(())
   }
 }
