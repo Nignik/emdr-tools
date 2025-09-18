@@ -135,7 +135,7 @@ impl ConnectionHandler {
         println!("Creating session");
         let session_id = self.create_session(conn_id.clone()).await;
         let response_msg = WebSocketMessage {
-          message: Some(ProtoMessage::CreateSessionResponse(comm::CreateSessionResponse { accepted: true, session_url: session_id })),
+          message: Some(ProtoMessage::CreateSessionResponse(comm::CreateSessionResponse { accepted: true, sid: session_id })),
         };
         self.send_message(conn_id.clone(), response_msg).await;
       }

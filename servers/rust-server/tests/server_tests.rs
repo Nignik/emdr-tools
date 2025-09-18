@@ -13,7 +13,7 @@ mod tests {
 
     let resp = common::create_session(&mut host).await?;
     assert!(resp.accepted);
-    assert_eq!(resp.session_url, "0");
+    assert_eq!(resp.sid, "0");
 
     host.close(None).await.ok();
     Ok(())
@@ -25,7 +25,7 @@ mod tests {
     let mut host = common::connect(&url).await?;
     let mut client = common::connect(&url).await?;
 
-    let sid = common::create_session(&mut host).await?.session_url;
+    let sid = common::create_session(&mut host).await?.sid;
     let resp = common::join_session(&mut client, sid).await?;
     assert!(resp.accepted);
 
@@ -40,15 +40,15 @@ mod tests {
     let mut host = common::connect(&url).await?;
     let mut client = common::connect(&url).await?;
 
-    let sid = common::create_session(&mut host).await?.session_url;
-    let _ = common::join_session(&mut client, sid).await?;
+    let sid = common::create_session(&mut host).await?.sid;
+    let _ = common::join_session(&mut client, sid.clone()).await?;
 
-    let params = common::comm::Params{size: 1, speed: 2, color: String::from("blue"), sid: String::from("0")};
+    let params = common::comm::Params{size: 1, speed: 2, color: String::from("blue"), sid: sid.clone()};
     let params_response = common::send_params(&mut host, &mut client, params).await?;
     assert_eq!(params_response.size, 1);
     assert_eq!(params_response.speed, 2);
     assert_eq!(params_response.color, "blue");
-    assert_eq!(params_response.sid, "0");
+    assert_eq!(params_response.sid, sid);
 
     client.close(None).await.ok();
     host.close(None).await.ok();
