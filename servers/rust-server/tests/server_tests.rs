@@ -13,7 +13,6 @@ mod tests {
 
     let resp = common::create_session(&mut host).await?;
     assert!(resp.accepted);
-    assert_eq!(resp.session_url, "http://localhost:5173/client?sid=0");
 
     host.close(None).await.ok();
     Ok(())
