@@ -100,7 +100,7 @@ impl ConnectionHandler {
   async fn message_session(&self, session_id: &str, msg: WebSocketMessage) {
     let ids: Vec<u32> = {
       let sessions = self.sessions.lock().await;
-      let session = sessions.get(session_id).unwrap();
+      let session = sessions.get(session_id).expect(&format!("Error: tried to message session: {} that doesn't exist", session_id));
       session.client_ids.clone()
     };
 
@@ -134,8 +134,9 @@ impl ConnectionHandler {
       Some(ProtoMessage::CreateSessionRequest(_)) => {
         println!("Creating session");
         let session_id = self.create_session(conn_id.clone()).await;
+        let session_url = format!("http://localhost:5173/client?sid={}", session_id);
         let response_msg = WebSocketMessage {
-          message: Some(ProtoMessage::CreateSessionResponse(comm::CreateSessionResponse { accepted: true, sid: session_id })),
+          message: Some(ProtoMessage::CreateSessionResponse(comm::CreateSessionResponse { accepted: true, session_url: session_url})),
         };
         self.send_message(conn_id.clone(), response_msg).await;
       }
