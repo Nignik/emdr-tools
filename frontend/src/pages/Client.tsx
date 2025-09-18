@@ -43,7 +43,7 @@ const Client: React.FC = () => {
             try {
                 const buffer = await toUint8Array(event.data);
                 const decoded = WebSocketMessage.decode(buffer);
-
+                console.log(decoded);
                 if (decoded.params) {
                     const p = decoded.params;
                     setParams({

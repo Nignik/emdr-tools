@@ -6,6 +6,7 @@ use prost::Message;
 use std::{collections::HashMap, sync::Arc};
 use tokio::{net::TcpStream, sync::Mutex};
 use tokio_tungstenite::{WebSocketStream, accept_async, tungstenite::Message as TokioMessage};
+use uuid::Uuid;
 
 pub mod comm {
   include!(concat!(env!("OUT_DIR"), "/emdr_messages.rs"));
@@ -30,8 +31,7 @@ impl Session {
 pub struct ConnectionHandler {
   conns: Arc<Mutex<HashMap<u32, (WsSenderType, WsReceiverType)>>>,
   sessions: Arc<Mutex<HashMap<String, Session>>>,
-  current_conn_id: Mutex<u32>,
-  current_session_id: Mutex<u32>,
+  current_conn_id: Mutex<u32>
 }
 
 impl ConnectionHandler {
@@ -110,15 +110,14 @@ impl ConnectionHandler {
   }
 
   async fn create_session(&self, host_id: u32) -> String {
-    let session_id = self.current_session_id.lock().await.clone().to_string();
-    self.sessions.lock().await.insert(session_id.clone(), Session::new(host_id.clone()));
-    *self.current_session_id.lock().await += 1;
+    let session_id = Uuid::new_v4();
+    self.sessions.lock().await.insert(session_id.to_string(), Session::new(host_id.clone()));
     session_id.to_string()
   }
 
   async fn join_session(&self, client_id: u32, session_id: &str) -> Result<(), String> {
     let mut sessions = self.sessions.lock().await;
-    let session = sessions.get_mut(session_id).ok_or_else(|| "Session not found".to_string())?;
+    let session = sessions.get_mut(session_id).ok_or_else(|| format!("session {} not found", session_id).to_string())?;
     session.client_ids.push(client_id.clone());
     
     Ok(())
@@ -141,8 +140,8 @@ impl ConnectionHandler {
         self.send_message(conn_id.clone(), response_msg).await;
       }
       Some(ProtoMessage::JoinSessionRequest(join_request)) => {
-        println!("Client joining session");
         let session_id = join_request.sid;
+        println!("Client joining session {}", session_id);
         let accepted;
         match self.join_session(conn_id.clone(), &session_id).await {
           Ok(_) => {
