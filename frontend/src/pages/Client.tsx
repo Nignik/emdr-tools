@@ -43,7 +43,7 @@ const Client: React.FC = () => {
             try {
                 const buffer = await toUint8Array(event.data);
                 const decoded = WebSocketMessage.decode(buffer);
-
+                console.log(decoded);
                 if (decoded.params) {
                     const p = decoded.params;
                     setParams({
@@ -85,6 +85,7 @@ const Client: React.FC = () => {
                 const buf = WebSocketMessage.encode(msg).finish();
                 socket.send(buf);
                 console.log("[Client] Sent JoinSessionRequest with sessionUrl:", href);
+                console.log("[Client] Sent JoinSessionRequest with sid:", sid);
             } catch (e) {
                 console.error("[Client] Send JoinSessionRequest error:", e);
             }
