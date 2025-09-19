@@ -12,6 +12,7 @@ pub mod comm
 #[tokio::main]
 async fn main()
 {
+  env_logger::init();
   let args: Vec<String> = std::env::args().collect();
   let (host, port) = match args.len()
   {
@@ -45,7 +46,7 @@ async fn main()
           return;
         }
       };
-      handler.handle_connection(conn_id).await;
+      handler.handle_connection(conn_id).await.unwrap_or_else(|e| log::error!("{}", e));
     });
   }
 }
