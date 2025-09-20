@@ -3,7 +3,7 @@ version: "3.8"
 services:
   react-app:
     build: .
-    container_name: react_app
+    container_name: client_emdr_app
     ports:
       - "8080:80"
     restart: always

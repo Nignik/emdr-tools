@@ -5,8 +5,12 @@ const crypto = require("crypto");
 
 const wss = new WebSocket.Server({ port: 4000 });
 
-// Map: sessionId -> Set<ws>
+/**
+ * sessions: Map<sessionId, { host: WebSocket|null, clients: Set<WebSocket> }>
+ * wsMeta:   Map<WebSocket, { role: 'host'|'client', sessionId: string }>
+ */
 const sessions = new Map();
+const wsMeta = new Map();
 
 protobuf.load("../../shared/messages.proto", (err, root) => {
     if (err) {
@@ -18,41 +22,51 @@ protobuf.load("../../shared/messages.proto", (err, root) => {
     const CreateSessionResponse = root.lookupType("emdr_messages.CreateSessionResponse");
     const JoinSessionResponse   = root.lookupType("emdr_messages.JoinSessionResponse");
     const Params                = root.lookupType("emdr_messages.Params");
+    const JoinSessionRequest    = root.lookupType("emdr_messages.JoinSessionRequest");
 
     // ===== Helpers =====
-    function createMsg(fields) {
-        return WebSocketMessage.encode(WebSocketMessage.create(fields)).finish();
-    }
+    const encodeMsg = (fields) =>
+        WebSocketMessage.encode(WebSocketMessage.create(fields)).finish();
 
-    function send(ws, buffer) {
-        if (ws.readyState === WebSocket.OPEN) ws.send(buffer);
-    }
+    const send = (ws, buffer) => {
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(buffer);
+    };
 
-    function broadcast(buffer) {
-        wss.clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) client.send(buffer);
-        });
-    }
-
-    function removeClientFromSessions(ws) {
-        for (const [id, set] of sessions) {
-            if (set.delete(ws) && set.size === 0) sessions.delete(id);
-        }
-    }
-
-    function decodeAndVerify(buffer) {
+    const decodeAndVerify = (buffer) => {
         const msg = WebSocketMessage.decode(buffer);
-        const plain = WebSocketMessage.toObject(msg); // verify oczekuje plain object
-        const err = WebSocketMessage.verify(plain);
-        if (err) throw new Error(err);
+        const plain = WebSocketMessage.toObject(msg);
+        const verifyErr = WebSocketMessage.verify(plain);
+        if (verifyErr) throw new Error(verifyErr);
         return msg;
-    }
+    };
 
-    // Zwraca nazwę ustawionego wariantu oneof (camelCase), np. "createSessionRequest"
-    function getOneofCase(msg) {
+    const getOneofCase = (msg) => {
         const withOneof = WebSocketMessage.toObject(msg, { oneofs: true });
         return withOneof.message || null;
-    }
+    };
+
+    const removeSocketFromSession = (ws) => {
+        const meta = wsMeta.get(ws);
+        if (!meta) return;
+        wsMeta.delete(ws);
+
+        const ses = sessions.get(meta.sessionId);
+        if (!ses) return;
+
+        if (meta.role === "host") {
+            // jeśli host wychodzi – zamknij sesję i rozłącz klientów
+            ses.clients.forEach((c) => {
+                try { c.close(1000, "Host disconnected"); } catch {}
+                wsMeta.delete(c);
+            });
+            sessions.delete(meta.sessionId);
+        } else {
+            ses.clients.delete(ws);
+            if (!ses.host && ses.clients.size === 0) {
+                sessions.delete(meta.sessionId);
+            }
+        }
+    };
 
     // ===== Handlery =====
     function handleCreateSessionRequest(ws) {
@@ -61,43 +75,74 @@ protobuf.load("../../shared/messages.proto", (err, root) => {
         const sessionId = crypto.randomUUID?.() || crypto.randomBytes(8).toString("hex");
         const sessionUrl = `http://localhost:5173/client?sid=${sessionId}`;
 
-        sessions.set(sessionId, new Set([ws]));
+        // zarejestruj sesję i oznacz tego ws jako hosta
+        sessions.set(sessionId, { host: ws, clients: new Set() });
+        wsMeta.set(ws, { role: "host", sessionId });
 
-        const respBuf = createMsg({
+        const respBuf = encodeMsg({
             createSessionResponse: CreateSessionResponse.create({
                 accepted: true,
-                sessionUrl, // camelCase nazwy pól w ts-proto/Twoim hoście
+                sessionUrl, // camelCase
             }),
         });
         send(ws, respBuf);
     }
 
     function handleJoinSessionRequest(ws, joinReq) {
-        const sid = joinReq?.sid ?? joinReq?.sid ?? "";
-        console.log("[IN] JoinSessionRequest:", sid);
+        // >>> WAŻNE: zakładamy JoinSessionRequest{ sid:string }
+        const sid = (joinReq && joinReq.sid) ? String(joinReq.sid) : "";
+        console.log("[IN] JoinSessionRequest:", { sid });
 
-        // Wyciągnij sid z query stringu
-        let sessionId = sid;
+        const ses = sid && sessions.get(sid);
+        const accepted = !!(ses && ses.host);
 
-        const exists = sessionId && sessions.has(sessionId);
-        if (exists) sessions.get(sessionId).add(ws);
+        // oznacz klienta i dopisz do sesji
+        if (accepted) {
+            ses.clients.add(ws);
+            wsMeta.set(ws, { role: "client", sessionId: sid });
+        }
 
-        const respBuf = createMsg({
-            joinSessionResponse: JoinSessionResponse.create({ accepted: !!exists }),
+        // 1) odpowiedź do KLIENTA
+        const respToClient = encodeMsg({
+            joinSessionResponse: JoinSessionResponse.create({ accepted })
         });
-        send(ws, respBuf);
+        send(ws, respToClient);
+
+        // 2) DODATKOWO: powiadom HOSTA (OPCJA A)
+        if (accepted && ses.host) {
+            const respToHost = encodeMsg({
+                joinSessionResponse: JoinSessionResponse.create({ accepted: true })
+            });
+            send(ses.host, respToHost);
+        }
     }
 
-    function handleParams(p) {
-        console.log("[IN] Params:", p);
-        const respBuf = createMsg({
+    function handleParams(ws, p) {
+        // wymagamy sid, żeby wysłać we właściwą sesję
+        const sid = p?.sid ? String(p.sid) : "";
+        if (!sid) {
+            console.warn("[WARN] Params bez sid – ignoruję.");
+            return;
+        }
+        const ses = sessions.get(sid);
+        if (!ses) {
+            console.warn("[WARN] Params dla nieistniejącej sesji:", sid);
+            return;
+        }
+
+        // Możesz chcieć zwalidować pola (size/speed/color)
+        const outBuf = encodeMsg({
             params: Params.create({
-                size: p.size ?? 0,
+                size:  p.size  ?? 0,
                 speed: p.speed ?? 0,
                 color: p.color ?? "",
+                sid   : sid, // zachowujemy sid
             }),
         });
-        broadcast(respBuf);
+
+        // wyślij do hosta i wszystkich klientów tej sesji
+        send(ses.host, outBuf);
+        ses.clients.forEach((c) => send(c, outBuf));
     }
 
     // ===== Serwer WS =====
@@ -110,7 +155,6 @@ protobuf.load("../../shared/messages.proto", (err, root) => {
                 const incoming = decodeAndVerify(buffer);
 
                 const oneofCase = getOneofCase(incoming);
-                // Podgląd co przyszło (plain object + discriminator)
                 const dump = WebSocketMessage.toObject(incoming, { oneofs: true });
                 console.log("[IN] WebSocketMessage", JSON.stringify(dump, null, 2));
                 console.log("[IN] oneof =", oneofCase);
@@ -125,7 +169,7 @@ protobuf.load("../../shared/messages.proto", (err, root) => {
                         break;
 
                     case "params":
-                        handleParams(incoming.params);
+                        handleParams(ws, incoming.params);
                         break;
 
                     default:
@@ -137,8 +181,14 @@ protobuf.load("../../shared/messages.proto", (err, root) => {
         });
 
         ws.on("close", () => {
-            removeClientFromSessions(ws);
+            removeSocketFromSession(ws);
             console.log("Client disconnected");
         });
+
+        ws.on("error", (e) => {
+            console.warn("WS error:", e?.message || e);
+        });
     });
+
+    console.log("WS server listening on ws://localhost:4000");
 });
