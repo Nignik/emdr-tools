@@ -19,11 +19,12 @@ type WsReceiverType = Arc<Mutex<SplitStream<tokio_tungstenite::WebSocketStream<T
 
 pub struct Session {
   client_ids: Vec<u32>,
+  params_msg: WebSocketMessage
 }
 
 impl Session {
   pub fn new() -> Self {
-    Self { client_ids: Vec::new() }
+    Self { client_ids: Vec::new(), params_msg: WebSocketMessage::default() }
   }
 }
 
@@ -148,6 +149,11 @@ impl ConnectionHandler {
 
   async fn handle_params(&self, params: &comm::Params, params_msg: &WebSocketMessage) {
     log::info!("Sending params to session: {}", params.sid);
+
+    if let Some(session) = self.sessions.lock().await.get_mut(&params.sid) {
+      session.params_msg = params_msg.clone();
+    }
+
     self.message_session(&params.sid, params_msg).await.unwrap_or_else(|e| log::error!("{}", e));
   }
 
@@ -170,5 +176,13 @@ impl ConnectionHandler {
       message: Some(ProtoMessage::JoinSessionResponse(comm::JoinSessionResponse { accepted: accepted })),
     };
     self.send_message(&conn_id, &response_msg).await.unwrap_or_else(|e| log::error!("{}", e));
+
+    if !accepted {
+      return;
+    }
+
+    if let Some(session) = self.sessions.lock().await.get(session_id) {
+      self.send_message(&conn_id, &session.params_msg).await.unwrap_or_else(|e| log::error!("{}", e));
+    }
   }
 }
