@@ -46,13 +46,13 @@ impl ConnectionHandler {
     Ok(conn_id)
   }
 
-  pub async fn close_connection(&self, conn_id: u32) -> Result<()> {
+  pub async fn close_connection(&self, conn_id: &u32) -> Result<()> {
     self.conns.lock().await.remove(&conn_id).ok_or_else(|| anyhow!("Failed to remove connection: {}", conn_id))?;
     let mut sessions = self.sessions.lock().await;
     let mut session_to_remove = None;
 
     for (session_id, session) in sessions.iter_mut() {
-      if let Some(pos) = session.client_ids.iter().position(|&id| id == conn_id) {
+      if let Some(pos) = session.client_ids.iter().position(|&id| id == *conn_id) {
         session.client_ids.remove(pos);
 
         if session.client_ids.is_empty() {
@@ -69,13 +69,13 @@ impl ConnectionHandler {
     Ok(())
   }
 
-  pub async fn handle_connection(&self, conn_id: u32) -> Result<()> {
+  pub async fn handle_connection(&self, conn_id: &u32) -> Result<()> {
     let receiver = self.get_receiver(conn_id).await.ok_or_else(|| anyhow!("Failed to find receiver: {}", conn_id))?;
     while let Some(msg) = receiver.lock().await.next().await {
       log::info!("Received message");
       match msg {
         Ok(TokioMessage::Binary(bytes)) => match WebSocketMessage::decode(&bytes[..]) {
-          Ok(decoded_msg) => self.handle_message(conn_id.clone(), decoded_msg).await,
+          Ok(decoded_msg) => self.handle_message(&conn_id, decoded_msg).await,
           Err(e) => log::error!("Failed to decode message: {}", e),
         },
         Err(e) => log::error!("Failed to receive message: {}", e),
@@ -86,15 +86,15 @@ impl ConnectionHandler {
     Ok(())
   }
 
-  async fn get_sender(&self, conn_id: u32) -> Option<WsSenderType> {
+  async fn get_sender(&self, conn_id: &u32) -> Option<WsSenderType> {
     self.conns.lock().await.get(&conn_id).map(|(sender, _)| sender.clone())
   }
 
-  async fn get_receiver(&self, conn_id: u32) -> Option<WsReceiverType> {
+  async fn get_receiver(&self, conn_id: &u32) -> Option<WsReceiverType> {
     self.conns.lock().await.get(&conn_id).map(|(_, receiver)| receiver.clone())
   }
 
-  async fn send_message(&self, sender_id: u32, msg: WebSocketMessage) -> Result<()> {
+  async fn send_message(&self, sender_id: &u32, msg: &WebSocketMessage) -> Result<()> {
     let mut buf = Vec::new();
     let sender = self.get_sender(sender_id).await.ok_or_else(|| anyhow!("Tried to send message with sender: {}, but it doesn't exist", sender_id))?;
 
@@ -105,7 +105,7 @@ impl ConnectionHandler {
     Ok(())
   }
 
-  async fn message_session(&self, session_id: &str, msg: WebSocketMessage) -> Result<(), String> {
+  async fn message_session(&self, session_id: &str, msg: &WebSocketMessage) -> Result<(), String> {
     let ids: Vec<u32> = {
       let sessions = self.sessions.lock().await;
       match sessions.get(session_id) {
@@ -115,7 +115,7 @@ impl ConnectionHandler {
     };
 
     for id in ids {
-      self.send_message(id, msg.clone()).await.unwrap_or_else(|e| log::error!("{}", e));
+      self.send_message(&id, &msg).await.unwrap_or_else(|e| log::error!("{}", e));
     }
 
     Ok(())
@@ -128,7 +128,7 @@ impl ConnectionHandler {
     session_id.to_string()
   }
 
-  async fn join_session(&self, client_id: u32, session_id: &str) -> Result<(), String> {
+  async fn join_session(&self, client_id: &u32, session_id: &str) -> Result<(), String> {
     let mut sessions = self.sessions.lock().await;
     let session = sessions.get_mut(session_id).ok_or_else(|| format!("Tried to join session: {}, but it doesn't exist", session_id).to_string())?;
     session.client_ids.push(client_id.clone());
@@ -136,39 +136,39 @@ impl ConnectionHandler {
     Ok(())
   }
 
-  async fn handle_message(&self, conn_id: u32, msg: WebSocketMessage) {
+  async fn handle_message(&self, conn_id: &u32, msg: WebSocketMessage) {
     let cloned_msg = msg.clone();
     match msg.message {
       Some(ProtoMessage::Params(params)) => self.handle_params(&params, &cloned_msg).await,
-      Some(ProtoMessage::CreateSessionRequest(_)) => self.handle_create_session_request(conn_id.clone()).await,
-      Some(ProtoMessage::JoinSessionRequest(join_request)) => self.handle_join_session_request(&join_request, conn_id.clone()).await,
+      Some(ProtoMessage::CreateSessionRequest(_)) => self.handle_create_session_request(conn_id).await,
+      Some(ProtoMessage::JoinSessionRequest(join_request)) => self.handle_join_session_request(&join_request, &conn_id).await,
       _ => log::warn!("Received message of unknown type"),
     }
   }
 
   async fn handle_params(&self, params: &comm::Params, params_msg: &WebSocketMessage) {
     log::info!("Sending params to session: {}", params.sid);
-    self.message_session(&params.sid, params_msg.clone()).await.unwrap_or_else(|e| log::error!("{}", e));
+    self.message_session(&params.sid, params_msg).await.unwrap_or_else(|e| log::error!("{}", e));
   }
 
-  async fn handle_create_session_request(&self, conn_id: u32) {
+  async fn handle_create_session_request(&self, conn_id: &u32) {
     log::info!("Creating session");
     let session_id = self.create_session().await;
     let session_url = format!("http://localhost:5173/client?sid={}", session_id);
     let response_msg = WebSocketMessage {
       message: Some(ProtoMessage::CreateSessionResponse(comm::CreateSessionResponse { accepted: true, session_url: session_url })),
     };
-    self.send_message(conn_id.clone(), response_msg).await.unwrap_or_else(|e| log::error!("{}", e));
-    self.join_session(conn_id, &session_id).await.unwrap_or_else(|e| log::error!("{}", e));
+    self.send_message(&conn_id, &response_msg).await.unwrap_or_else(|e| log::error!("{}", e));
+    self.join_session(&conn_id, &session_id).await.unwrap_or_else(|e| log::error!("{}", e));
   }
 
-  async fn handle_join_session_request(&self, join_request: &comm::JoinSessionRequest, conn_id: u32) {
+  async fn handle_join_session_request(&self, join_request: &comm::JoinSessionRequest, conn_id: &u32) {
     let session_id = &join_request.sid;
     log::info!("Client joining session {}", session_id);
-    let accepted = self.join_session(conn_id.clone(), &session_id).await.inspect_err(|e| log::error!("{}", e)).is_ok();
+    let accepted = self.join_session(&conn_id, &session_id).await.inspect_err(|e| log::error!("{}", e)).is_ok();
     let response_msg = WebSocketMessage {
       message: Some(ProtoMessage::JoinSessionResponse(comm::JoinSessionResponse { accepted: accepted })),
     };
-    self.send_message(conn_id.clone(), response_msg).await.unwrap_or_else(|e| log::error!("{}", e));
+    self.send_message(&conn_id, &response_msg).await.unwrap_or_else(|e| log::error!("{}", e));
   }
 }
