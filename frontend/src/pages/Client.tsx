@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import MovingCircle from "../components/MovingCircle";
 import { WebSocketMessage, Params } from "../generated/messages";
 import { socket } from "../socket";
@@ -10,19 +10,14 @@ const Client: React.FC = () => {
         color: "#00ff00",
         sid: ""
     });
-    const [sid, setSid] = useState<string | null>(null);
-    const [resetToken, setResetToken] = useState(0);
 
-    // Wyciągnij sid z URL (np. /client?sid=GUID)
-    const { href, foundSid } = useMemo(() => {
+    // 🔑 sid od razu z URL
+    const [sid] = useState<string | null>(() => {
         const url = new URL(window.location.href);
-        const s = url.searchParams.get("sid");
-        return { href: url.toString(), foundSid: s };
-    }, []);
+        return url.searchParams.get("sid");
+    });
 
-    useEffect(() => {
-        setSid(foundSid ?? null);
-    }, [foundSid]);
+    const [resetToken, setResetToken] = useState(0);
 
     // Pomocnicza konwersja event.data -> Uint8Array
     const toUint8Array = async (data: unknown): Promise<Uint8Array> => {
@@ -37,13 +32,19 @@ const Client: React.FC = () => {
         if (socket) socket.binaryType = "arraybuffer";
     }, []);
 
-    // Nasłuch wiadomości z serwera (Params itp.)
+    // Nasłuch wiadomości z serwera
     useEffect(() => {
         const onMessage = async (event: MessageEvent) => {
             try {
                 const buffer = await toUint8Array(event.data);
                 const decoded = WebSocketMessage.decode(buffer);
 
+                // ✅ Reset TYLKO przy zaakceptowanym joinie
+                if (decoded.joinSessionResponse?.accepted) {
+                    setResetToken((t) => t + 1);
+                }
+
+                // Aktualizacje parametrów — BEZ resetu pozycji
                 if (decoded.params) {
                     const p = decoded.params;
                     setParams({
@@ -52,7 +53,6 @@ const Client: React.FC = () => {
                         color: p.color,
                         sid: p.sid
                     });
-                    setResetToken((t) => t + 1); // 🔁 restart po nowych parametrach
                 }
             } catch (err) {
                 console.error("[Client] Protobuf decode error:", err);
@@ -65,7 +65,7 @@ const Client: React.FC = () => {
         };
     }, []);
 
-    // Po połączeniu z WS wyślij joinSessionRequest z URL (zawiera sid)
+    // Po połączeniu z WS wyślij joinSessionRequest (zawiera sid)
     useEffect(() => {
         if (!sid) {
             console.warn("[Client] Brak `sid` w URL. Oczekuję adresu typu /client?sid=...");
@@ -75,16 +75,10 @@ const Client: React.FC = () => {
         const sendJoin = () => {
             try {
                 const msg = WebSocketMessage.create({
-                    // ts-proto: camelCase
-                    joinSessionRequest: {
-                        // .proto ma `string session_url = 1;`
-                        // w ts-proto to jest `sessionUrl` — wyślemy pełny link (z sid)
-                        sid: params.sid,
-                    },
+                    joinSessionRequest: { sid }
                 });
                 const buf = WebSocketMessage.encode(msg).finish();
                 socket.send(buf);
-                console.log("[Client] Sent JoinSessionRequest with sessionUrl:", href);
             } catch (e) {
                 console.error("[Client] Send JoinSessionRequest error:", e);
             }
@@ -99,11 +93,16 @@ const Client: React.FC = () => {
             socket.addEventListener("open", onOpen, { once: true });
             return () => socket.removeEventListener("open", onOpen);
         }
-    }, [sid, href]);
+    }, [sid]);
 
     return (
         <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center" }}>
-            <MovingCircle size={params.size} speed={params.speed} color={params.color} resetToken={resetToken} />
+            <MovingCircle
+                size={params.size}
+                speed={params.speed}
+                color={params.color}
+                resetToken={resetToken}
+            />
         </div>
     );
 };
