@@ -46,6 +46,29 @@ impl ConnectionHandler {
     Ok(conn_id)
   }
 
+  pub async fn close_connection(&self, conn_id: u32) -> Result<()> {
+    self.conns.lock().await.remove(&conn_id).ok_or_else(|| anyhow!("Failed to remove connection: {}", conn_id))?;
+    let mut sessions = self.sessions.lock().await;
+    let mut session_to_remove = None;
+
+    for (session_id, session) in sessions.iter_mut() {
+      if let Some(pos) = session.client_ids.iter().position(|&id| id == conn_id) {
+        session.client_ids.remove(pos);
+
+        if session.client_ids.is_empty() {
+          session_to_remove = Some(session_id.clone());
+        }
+        break;
+      }
+    }
+
+    if let Some(session_id) = session_to_remove {
+      sessions.remove(&session_id);
+    }
+
+    Ok(())
+  }
+
   pub async fn handle_connection(&self, conn_id: u32) -> Result<()> {
     let receiver = self.get_receiver(conn_id).await.ok_or_else(|| anyhow!("Failed to find receiver: {}", conn_id))?;
     while let Some(msg) = receiver.lock().await.next().await {
@@ -136,6 +159,7 @@ impl ConnectionHandler {
       message: Some(ProtoMessage::CreateSessionResponse(comm::CreateSessionResponse { accepted: true, session_url: session_url })),
     };
     self.send_message(conn_id.clone(), response_msg).await.unwrap_or_else(|e| log::error!("{}", e));
+    self.join_session(conn_id, &session_id).await.unwrap_or_else(|e| log::error!("{}", e));
   }
 
   async fn handle_join_session_request(&self, join_request: &comm::JoinSessionRequest, conn_id: u32) {

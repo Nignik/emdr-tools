@@ -37,6 +37,7 @@ async fn spawn_test_server() -> (Arc<ConnectionHandler>, String) {
           }
         };
         handler.handle_connection(conn_id).await.unwrap_or_else(|e| log::error!("{}", e));
+        handler.close_connection(conn_id).await.unwrap_or_else(|e| log::error!("{}", e));
       });
     }
   });
