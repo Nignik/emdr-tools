@@ -16,6 +16,13 @@ pub mod comm {
 }
 use comm::{WebSocketMessage, web_socket_message::Message as ProtoMessage};
 
+#[derive(Default)]
+pub struct Responses {
+  pub create_session_resps: Vec<comm::CreateSessionResponse>,
+  pub join_session_resps: Vec<comm::JoinSessionResponse>,
+  pub params_resps: Vec<comm::Params>,
+}
+
 async fn spawn_test_server() -> (Arc<ConnectionHandler>, String) {
   let host = "127.0.0.1";
   let listener = TcpListener::bind((host, 0)).await.expect("Failed to bind");
@@ -76,7 +83,6 @@ where
 {
   let msg: WsMessage = tokio::time::timeout(timeout, ws.next()).await.map_err(|_| anyhow!("timed out after {:?}", timeout))?.ok_or_else(|| anyhow!("websocket stream ended"))??;
 
-  // Get the payload bytes robustly across tungstenite versions
   let bytes = match &msg {
     WsMessage::Binary(_) | WsMessage::Text(_) => msg.into_data(),
     WsMessage::Close(frame) => {
@@ -89,38 +95,79 @@ where
   Ok(WebSocketMessage::decode(&bytes[..])?)
 }
 
-pub async fn create_session(ws: &mut Ws) -> Result<comm::CreateSessionResponse> {
+pub async fn recv_protos<S>(ws: &mut S, timeout: Duration, count: usize) -> Result<Vec<WebSocketMessage>>
+where
+  S: futures_util::Stream<Item = Result<WsMessage, tungstenite::Error>> + Unpin,
+{
+  let mut messages = Vec::new();
+  let deadline = tokio::time::Instant::now() + timeout;
+
+  for _ in 0..count {
+    let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+    if remaining.is_zero() {
+      break;
+    }
+
+    let msg: WsMessage = match tokio::time::timeout(remaining, ws.next()).await {
+      Ok(Some(Ok(msg))) => msg,
+      Ok(Some(Err(e))) => return Err(anyhow!("websocket error: {}", e)),
+      Ok(None) => return Err(anyhow!("websocket stream ended")),
+      Err(_) => break,
+    };
+
+    let bytes = match &msg {
+      WsMessage::Binary(_) | WsMessage::Text(_) => msg.into_data(),
+      WsMessage::Close(frame) => {
+        let reason = frame.as_ref().map(|f| f.reason.to_string()).unwrap_or_default();
+        return Err(anyhow!("websocket closed by peer: {}", reason));
+      }
+      other => return Err(anyhow!("unexpected WS frame: {other:?}")),
+    };
+
+    messages.push(WebSocketMessage::decode(&bytes[..])?);
+  }
+
+  Ok(messages)
+}
+
+pub async fn transform_protos(msgs: &Vec<WebSocketMessage>) -> Responses {
+  let mut resps = Responses::default();
+  for msg in msgs.iter() {
+    match &msg.message {
+      Some(ProtoMessage::CreateSessionResponse(r)) => resps.create_session_resps.push(r.clone()),
+      Some(ProtoMessage::JoinSessionResponse(r)) => resps.join_session_resps.push(r.clone()),
+      Some(ProtoMessage::Params(r)) => resps.params_resps.push(r.clone()),
+      other => log::warn!("Received unexpected response message type: {other:?}")
+    }
+  }
+
+  resps
+}
+
+pub async fn create_session(ws: &mut Ws) -> Result<Responses> {
   let req = WebSocketMessage {
     message: Some(ProtoMessage::CreateSessionRequest(comm::CreateSessionRequest {})),
   };
   send_proto(ws, req).await?;
-  let msg = recv_proto(ws, Duration::from_secs(1)).await?;
-  match msg.message {
-    Some(ProtoMessage::CreateSessionResponse(r)) => Ok(r),
-    other => Err(anyhow!("Expected CreateSessionResponse, got {other:?}")),
-  }
+
+  let msgs = recv_protos(ws, Duration::from_secs(1), 1).await?;
+  Ok(transform_protos(&msgs).await)
 }
 
-pub async fn join_session(ws: &mut Ws, sid: String) -> Result<comm::JoinSessionResponse> {
+pub async fn join_session(ws: &mut Ws, sid: String) -> Result<Responses> {
   let req = WebSocketMessage {
     message: Some(ProtoMessage::JoinSessionRequest(comm::JoinSessionRequest { sid })),
   };
   send_proto(ws, req).await?;
-  let msg = recv_proto(ws, Duration::from_secs(1)).await?;
-  match msg.message {
-    Some(ProtoMessage::JoinSessionResponse(r)) => Ok(r),
-    other => Err(anyhow!("Expected JoinSessionResponse, got {other:?}")),
-  }
+
+  let msgs = recv_protos(ws, Duration::from_secs(1), 3).await?;
+  Ok(transform_protos(&msgs).await)
 }
 
-pub async fn send_params(sender_ws: &mut Ws, receiver_ws: &mut Ws, params: comm::Params) -> Result<comm::Params> {
-  let req = WebSocketMessage {
-    message: Some(ProtoMessage::Params(params)),
-  };
+pub async fn send_params(sender_ws: &mut Ws, receiver_ws: &mut Ws, params: comm::Params) -> Result<Responses> {
+  let req = WebSocketMessage { message: Some(ProtoMessage::Params(params)) };
   send_proto(sender_ws, req).await?;
-  let msg = recv_proto(receiver_ws, Duration::from_secs(1)).await?;
-  match msg.message {
-    Some(ProtoMessage::Params(r)) => Ok(r),
-    other => Err(anyhow!("Expected JoinSessionResponse, got {other:?}")),
-  }
+
+  let msgs = recv_protos(receiver_ws, Duration::from_secs(1), 1).await?;
+  Ok(transform_protos(&msgs).await)
 }

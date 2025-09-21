@@ -162,7 +162,7 @@ impl ConnectionHandler {
     let session_id = self.create_session().await;
     let session_url = format!("http://localhost:5173/client?sid={}", session_id);
     let response_msg = WebSocketMessage {
-      message: Some(ProtoMessage::CreateSessionResponse(comm::CreateSessionResponse { accepted: true, session_url: session_url })),
+      message: Some(ProtoMessage::CreateSessionResponse(comm::CreateSessionResponse { accepted: true, session_url })),
     };
     self.send_message(&conn_id, &response_msg).await.unwrap_or_else(|e| log::error!("{}", e));
     self.join_session(&conn_id, &session_id).await.unwrap_or_else(|e| log::error!("{}", e));
@@ -173,16 +173,18 @@ impl ConnectionHandler {
     log::info!("Client joining session {}", session_id);
     let accepted = self.join_session(&conn_id, &session_id).await.inspect_err(|e| log::error!("{}", e)).is_ok();
     let response_msg = WebSocketMessage {
-      message: Some(ProtoMessage::JoinSessionResponse(comm::JoinSessionResponse { accepted: accepted })),
+      message: Some(ProtoMessage::JoinSessionResponse(comm::JoinSessionResponse { accepted })),
     };
-    self.send_message(&conn_id, &response_msg).await.unwrap_or_else(|e| log::error!("{}", e));
+    self.message_session(&session_id, &response_msg).await.unwrap_or_else(|e| log::error!("{}", e));
 
     if !accepted {
       return;
     }
 
     if let Some(session) = self.sessions.lock().await.get(session_id) {
-      self.send_message(&conn_id, &session.params_msg).await.unwrap_or_else(|e| log::error!("{}", e));
+      if session.params_msg.message != None {
+        self.send_message(&conn_id, &session.params_msg).await.unwrap_or_else(|e| log::error!("{}", e));
+      }
     }
   }
 }
