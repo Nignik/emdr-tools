@@ -63,6 +63,7 @@ html, body, #root {
     padding: 16px clamp(12px, 2.5vw, 28px);
     background: var(--bg);
     min-height: 0; /* ważne w gridzie, żeby potomkowie mogli się kurczyć */
+    overflow-y: auto;
 }
 
 .host-title {
