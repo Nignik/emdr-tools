@@ -160,7 +160,7 @@ impl ConnectionHandler {
   async fn handle_create_session_request(&self, conn_id: &u32) {
     log::info!("Creating session");
     let session_id = self.create_session().await;
-    let session_url = format!("http://localhost:5173/client?sid={}", session_id);
+    let session_url = format!("https://test-f0m.pages.dev/client?sid={}", session_id);
     let response_msg = WebSocketMessage {
       message: Some(ProtoMessage::CreateSessionResponse(comm::CreateSessionResponse { accepted: true, session_url })),
     };
