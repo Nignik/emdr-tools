@@ -7,6 +7,7 @@ use prost::Message;
 use std::{collections::HashMap, sync::Arc};
 use tokio::{net::TcpStream, sync::Mutex};
 use tokio_tungstenite::{WebSocketStream, accept_async, tungstenite::Message as TokioMessage};
+use tokio::time::{interval, MissedTickBehavior, Duration};
 use uuid::Uuid;
 
 pub mod comm {
@@ -19,12 +20,15 @@ type WsReceiverType = Arc<Mutex<SplitStream<tokio_tungstenite::WebSocketStream<T
 
 pub struct Session {
   client_ids: Vec<u32>,
-  params_msg: WebSocketMessage
+  params_msg: WebSocketMessage,
 }
 
 impl Session {
   pub fn new() -> Self {
-    Self { client_ids: Vec::new(), params_msg: WebSocketMessage::default() }
+    Self {
+      client_ids: Vec::new(),
+      params_msg: WebSocketMessage::default(),
+    }
   }
 }
 
@@ -40,8 +44,31 @@ impl ConnectionHandler {
     let ws_stream = accept_async(stream).await?;
     let conn_id = self.current_conn_id.lock().await.clone();
     let (sender, receiver) = ws_stream.split();
-    self.conns.lock().await.insert(conn_id.clone(), (Arc::new(Mutex::new(sender)), Arc::new(Mutex::new(receiver))));
+    let sender = Arc::new(Mutex::new(sender));
+    let receiver = Arc::new(Mutex::new(receiver));
+    
+    self.conns.lock().await.insert(conn_id.clone(), (sender.clone(), receiver));
     *self.current_conn_id.lock().await += 1;
+
+    let hb_sender = sender.clone();
+    let hb_conn_id = conn_id.clone();
+    tokio::spawn(async move {
+      let mut tick = interval(Duration::from_secs(25));
+      tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+      loop {
+        tick.tick().await;
+        match hb_sender.lock().await.send(TokioMessage::Ping(prost::bytes::Bytes::new())).await {
+          Ok(_) => {
+            log::trace!("Sent heartbeat ping to {}", hb_conn_id);
+          }
+          Err(e) => {
+            log::debug!("Heartbeat stopped for {}: {}", hb_conn_id, e);
+            break;
+          }
+        }
+      }
+    });
 
     log::info!("WebSocket connected with: {}", &conn_id);
     Ok(conn_id)

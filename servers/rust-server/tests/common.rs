@@ -117,6 +117,7 @@ where
 
     let bytes = match &msg {
       WsMessage::Binary(_) | WsMessage::Text(_) => msg.into_data(),
+      WsMessage::Ping(_) => prost::bytes::Bytes::new(),
       WsMessage::Close(frame) => {
         let reason = frame.as_ref().map(|f| f.reason.to_string()).unwrap_or_default();
         return Err(anyhow!("websocket closed by peer: {}", reason));
@@ -124,7 +125,9 @@ where
       other => return Err(anyhow!("unexpected WS frame: {other:?}")),
     };
 
-    messages.push(WebSocketMessage::decode(&bytes[..])?);
+    if !bytes.is_empty() {
+      messages.push(WebSocketMessage::decode(&bytes[..])?);
+    }
   }
 
   Ok(messages)
